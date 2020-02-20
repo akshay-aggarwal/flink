@@ -123,7 +123,7 @@ public class KafkaConsumerThread extends Thread {
 	private final EventTimeAlignmentHandover eventTimeAlignmentHandover;
 
 	/** Indicate if there are any paused partitions in the consumer. */
-	private boolean hasPausedPartitions;
+	private List<TopicPartition> pausedPartitions;
 
 	public KafkaConsumerThread(
 			Logger log,
@@ -148,7 +148,7 @@ public class KafkaConsumerThread extends Thread {
 
 		this.unassignedPartitionsQueue = checkNotNull(unassignedPartitionsQueue);
 		this.eventTimeAlignmentHandover = checkNotNull(eventTimeAlignmentHandover);
-		this.hasPausedPartitions = false;
+		this.pausedPartitions = null;
 
 		this.pollTimeout = pollTimeout;
 		this.useMetrics = useMetrics;
@@ -308,24 +308,25 @@ public class KafkaConsumerThread extends Thread {
 	 * latest set of partitions for the event-time re-alignment.
 	 */
 	private void alignPartitions() {
-
 		if (this.eventTimeAlignmentHandover == null) {
 			return;
 		}
 
-		if (this.hasPausedPartitions) {
-			if (!this.eventTimeAlignmentHandover.isActive() && log.isDebugEnabled()) {
-				log.info("Disabling event time alignment");
-			}
+		List<TopicPartition> partitionsToPause = this.eventTimeAlignmentHandover.getPartitionsToPause();
+
+		if (partitionsToPause == null && this.pausedPartitions != null) {
+			log.info("Resuming all partitions");
 			// Resume all the partitions
-			this.consumer.resume(this.consumer.assignment());
-			this.hasPausedPartitions = false;
+			this.consumer.resume(this.pausedPartitions);
+			this.pausedPartitions = null;
+			return;
 		}
 
-		List<TopicPartition> partitionsToPause;
-		if (this.eventTimeAlignmentHandover.isActive()) {
+		if (partitionsToPause != null && !partitionsToPause.equals(this.pausedPartitions)) {
 
-			partitionsToPause = this.eventTimeAlignmentHandover.pollPartitionsToPause();
+			if (this.pausedPartitions != null) {
+				this.consumer.resume(this.pausedPartitions);
+			}
 
 			if (log.isDebugEnabled()) {
 				log.info("Suspending kafka topic partitions for event-time alignment - {}", partitionsToPause);
@@ -333,7 +334,7 @@ public class KafkaConsumerThread extends Thread {
 
 			// Pause the partitions
 			this.consumer.pause(partitionsToPause);
-			this.hasPausedPartitions = true;
+			this.pausedPartitions = partitionsToPause;
 		}
 	}
 

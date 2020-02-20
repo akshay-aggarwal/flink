@@ -15,35 +15,22 @@ public class EventTimeAlignmentHandover {
 	/** The list of partitions to be paused for realignment, null if alignment is inactive. */
 	private List<TopicPartition> partitionsToPause;
 
-	/** Flag which tells if event-time alignment is active. */
-	private boolean isActive;
-
-	public List<TopicPartition> pollPartitionsToPause() {
-		List<TopicPartition> temp;
+	public List<TopicPartition> getPartitionsToPause() {
 		synchronized (lock) {
-			temp = this.partitionsToPause;
-			this.partitionsToPause = null;
+			return this.partitionsToPause;
 		}
-		return temp;
 	}
 
 	public void activate(List<TopicPartition> partitionsToPause) {
 		synchronized (lock) {
-			this.isActive = true;
 			this.partitionsToPause = partitionsToPause;
 		}
 	}
 
 	public void deactivate() {
 		synchronized (lock) {
-			this.isActive = false;
 			this.partitionsToPause = null;
 		}
 	}
 
-	public boolean isActive() {
-		synchronized (lock) {
-			return isActive;
-		}
-	}
 }
