@@ -90,11 +90,12 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>> extends Abstract
 		this.ctx = StreamSourceContexts.getSourceContext(
 			timeCharacteristic,
 			getProcessingTimeService(),
+			getRuntimeContext().getGlobalAggregateManager(),
 			lockingObject,
 			streamStatusMaintainer,
 			collector,
 			watermarkInterval,
-			-1);
+			-1L);
 
 		try {
 			userFunction.run(ctx);

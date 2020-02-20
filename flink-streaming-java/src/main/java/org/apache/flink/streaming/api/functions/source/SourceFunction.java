@@ -25,6 +25,7 @@ import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.TimestampAssigner;
 import org.apache.flink.streaming.api.watermark.Watermark;
 
+import java.io.IOException;
 import java.io.Serializable;
 
 /**
@@ -261,6 +262,16 @@ public interface SourceFunction<T> extends Function, Serializable {
 		 * @return The object to use as the lock
 		 */
 		Object getCheckpointLock();
+
+		/**
+		 * Update the timestamp for time alignment across tasks.
+		 * @param timestamp Latest timestamp from the source task
+		 * @return Min of all timestamps emitted across tasks
+		 */
+		default long updateAlignmentTimestamp(long timestamp) throws IOException {
+			throw new UnsupportedOperationException("updateAlignmentTimestamp feature is only " +
+				"enabled for periodic watermarks");
+		}
 
 		/**
 		 * This method is called by the system to shut down the context.

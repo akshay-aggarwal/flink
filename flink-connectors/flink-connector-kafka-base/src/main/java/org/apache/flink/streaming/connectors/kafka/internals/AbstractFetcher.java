@@ -76,7 +76,7 @@ public abstract class AbstractFetcher<T, KPH> {
 	private final Object checkpointLock;
 
 	/** All partitions (and their state) that this fetcher is subscribed to. */
-	private final List<KafkaTopicPartitionState<KPH>> subscribedPartitionStates;
+	protected final List<KafkaTopicPartitionState<KPH>> subscribedPartitionStates;
 
 	/**
 	 * Queue of partitions that are not yet assigned to any Kafka clients for consuming.
@@ -436,6 +436,20 @@ public abstract class AbstractFetcher<T, KPH> {
 			sourceContext.collectWithTimestamp(record, timestamp);
 			partitionState.setOffset(offset);
 		}
+
+		// Need not be synchronized with checkpointLock as
+		// event time alignment is a transient operation
+		onEmitWithPeriodicWatermark(partitionState, timestamp);
+	}
+
+	/**
+	 * To be used by various implementations for event time alignment.
+	 * @param partitionState
+	 * @param timestamp
+	 */
+	protected void onEmitWithPeriodicWatermark(
+			KafkaTopicPartitionState<KPH> partitionState, long timestamp) {
+		// Hack for event time alignment
 	}
 
 	/**

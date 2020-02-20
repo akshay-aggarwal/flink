@@ -118,11 +118,19 @@ public class KafkaConsumerThread extends Thread {
 	/** Flag tracking whether the latest commit request has completed. */
 	private volatile boolean commitInProgress;
 
+
+	/** Used to communicate with the event time alignment thread running in the KafkaFetcher. */
+	private final EventTimeAlignmentHandover eventTimeAlignmentHandover;
+
+	/** Indicate if there are any paused partitions in the consumer. */
+	private boolean hasPausedPartitions;
+
 	public KafkaConsumerThread(
 			Logger log,
 			Handover handover,
 			Properties kafkaProperties,
 			ClosableBlockingQueue<KafkaTopicPartitionState<TopicPartition>> unassignedPartitionsQueue,
+			EventTimeAlignmentHandover eventTimeAlignmentHandover,
 			String threadName,
 			long pollTimeout,
 			boolean useMetrics,
@@ -139,6 +147,8 @@ public class KafkaConsumerThread extends Thread {
 		this.subtaskMetricGroup = checkNotNull(subtaskMetricGroup);
 
 		this.unassignedPartitionsQueue = checkNotNull(unassignedPartitionsQueue);
+		this.eventTimeAlignmentHandover = checkNotNull(eventTimeAlignmentHandover);
+		this.hasPausedPartitions = false;
 
 		this.pollTimeout = pollTimeout;
 		this.useMetrics = useMetrics;
@@ -205,6 +215,8 @@ public class KafkaConsumerThread extends Thread {
 			// they are carried across via re-adding them to the unassigned partitions queue
 			List<KafkaTopicPartitionState<TopicPartition>> newPartitions;
 
+			List<KafkaTopicPartitionState<TopicPartition>> partitionsToPause;
+
 			// main fetch loop
 			while (running) {
 
@@ -247,6 +259,10 @@ public class KafkaConsumerThread extends Thread {
 					continue;
 				}
 
+				// Check if there is a need to pause/resume partitions
+				// for event time event time alignment
+				alignPartitions();
+
 				// get the next batch of records, unless we did not manage to hand the old batch over
 				if (records == null) {
 					try {
@@ -284,6 +300,40 @@ public class KafkaConsumerThread extends Thread {
 			catch (Throwable t) {
 				log.warn("Error while closing Kafka consumer", t);
 			}
+		}
+	}
+
+	/**
+	 * Unpause/Resume the previously paused kafka partition assignments, and pause the
+	 * latest set of partitions for the event-time re-alignment.
+	 */
+	private void alignPartitions() {
+
+		if (this.eventTimeAlignmentHandover == null) {
+			return;
+		}
+
+		if (this.hasPausedPartitions) {
+			if (!this.eventTimeAlignmentHandover.isActive() && log.isDebugEnabled()) {
+				log.info("Disabling event time alignment");
+			}
+			// Resume all the partitions
+			this.consumer.resume(this.consumer.assignment());
+			this.hasPausedPartitions = false;
+		}
+
+		List<TopicPartition> partitionsToPause;
+		if (this.eventTimeAlignmentHandover.isActive()) {
+
+			partitionsToPause = this.eventTimeAlignmentHandover.pollPartitionsToPause();
+
+			if (log.isDebugEnabled()) {
+				log.info("Suspending kafka topic partitions for event-time alignment - {}", partitionsToPause);
+			}
+
+			// Pause the partitions
+			this.consumer.pause(partitionsToPause);
+			this.hasPausedPartitions = true;
 		}
 	}
 

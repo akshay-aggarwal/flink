@@ -134,6 +134,7 @@ public class ContinuousFileReaderOperator<OUT> extends AbstractStreamOperator<OU
 		this.readerContext = StreamSourceContexts.getSourceContext(
 			timeCharacteristic,
 			getProcessingTimeService(),
+			getRuntimeContext().getGlobalAggregateManager(),
 			checkpointLock,
 			getContainingTask().getStreamStatusMaintainer(),
 			output,

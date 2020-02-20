@@ -17,6 +17,8 @@
 
 package org.apache.flink.streaming.api.operators;
 
+import org.apache.flink.api.common.functions.AggregateFunction;
+import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -27,6 +29,7 @@ import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.util.Preconditions;
 
+import java.io.IOException;
 import java.util.concurrent.ScheduledFuture;
 
 /**
@@ -46,6 +49,7 @@ public class StreamSourceContexts {
 	public static <OUT> SourceFunction.SourceContext<OUT> getSourceContext(
 			TimeCharacteristic timeCharacteristic,
 			ProcessingTimeService processingTimeService,
+			GlobalAggregateManager aggregateManager,
 			Object checkpointLock,
 			StreamStatusMaintainer streamStatusMaintainer,
 			Output<StreamRecord<OUT>> output,
@@ -58,6 +62,7 @@ public class StreamSourceContexts {
 				ctx = new ManualWatermarkContext<>(
 					output,
 					processingTimeService,
+					aggregateManager,
 					checkpointLock,
 					streamStatusMaintainer,
 					idleTimeout);
@@ -286,10 +291,15 @@ public class StreamSourceContexts {
 
 		private final Output<StreamRecord<T>> output;
 		private final StreamRecord<T> reuse;
+		private final GlobalAggregateManager aggregateManager;
+		private final AggregateFunction<Long, Long, Long> minEventTimeAggregateFn;
+
+		private static final String AGGREGATE_EVENT_TIME_ALIGNMENT_MIN_TS = "event-time-alignment-min-ts";
 
 		private ManualWatermarkContext(
 				final Output<StreamRecord<T>> output,
 				final ProcessingTimeService timeService,
+				final GlobalAggregateManager aggregateManager,
 				final Object checkpointLock,
 				final StreamStatusMaintainer streamStatusMaintainer,
 				final long idleTimeout) {
@@ -298,6 +308,8 @@ public class StreamSourceContexts {
 
 			this.output = Preconditions.checkNotNull(output, "The output cannot be null.");
 			this.reuse = new StreamRecord<>(null);
+			this.aggregateManager = aggregateManager;
+			this.minEventTimeAggregateFn = new MinTimestampAggregateFn();
 		}
 
 		@Override
@@ -318,6 +330,39 @@ public class StreamSourceContexts {
 		@Override
 		protected boolean allowWatermark(Watermark mark) {
 			return true;
+		}
+
+		@Override
+		public long updateAlignmentTimestamp(long timestamp) throws IOException {
+			return this.aggregateManager.updateGlobalAggregate(AGGREGATE_EVENT_TIME_ALIGNMENT_MIN_TS,
+				timestamp, this.minEventTimeAggregateFn);
+		}
+	}
+
+	private static class MinTimestampAggregateFn implements AggregateFunction<Long, Long, Long> {
+
+		/**
+		 * Long.MAX_VALUE ensures that till we have the initial watermarks
+		 * per partition, alignment is not operational.
+		 */
+		@Override
+		public Long createAccumulator() {
+			return Long.MAX_VALUE;
+		}
+
+		@Override
+		public Long add(Long value, Long accumulator) {
+			return Math.min(value, accumulator);
+		}
+
+		@Override
+		public Long getResult(Long accumulator) {
+			return accumulator;
+		}
+
+		@Override
+		public Long merge(Long a, Long b) {
+			return add(a, b);
 		}
 	}
 

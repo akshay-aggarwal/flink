@@ -18,6 +18,8 @@
 
 package org.apache.flink.streaming.api.operators;
 
+import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
+import org.apache.flink.runtime.taskexecutor.TestGlobalAggregateManager;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -83,6 +85,7 @@ public class StreamSourceContextIdleDetectionTests {
 
 		long initialTime = 0;
 		TestProcessingTimeService processingTimeService = new TestProcessingTimeService();
+		GlobalAggregateManager globalAggregateManager = new TestGlobalAggregateManager();
 		processingTimeService.setCurrentTime(initialTime);
 
 		final List<StreamElement> output = new ArrayList<>();
@@ -92,6 +95,7 @@ public class StreamSourceContextIdleDetectionTests {
 		SourceFunction.SourceContext<String> context = StreamSourceContexts.getSourceContext(
 			TimeCharacteristic.EventTime,
 			processingTimeService,
+			globalAggregateManager,
 			new Object(),
 			mockStreamStatusMaintainer,
 			new CollectorOutput<String>(output),
@@ -170,6 +174,7 @@ public class StreamSourceContextIdleDetectionTests {
 		long initialTime = 20;
 
 		TestProcessingTimeService processingTimeService = new TestProcessingTimeService();
+		GlobalAggregateManager globalAggregateManager = new TestGlobalAggregateManager();
 		processingTimeService.setCurrentTime(initialTime);
 
 		MockStreamStatusMaintainer mockStreamStatusMaintainer = new MockStreamStatusMaintainer();
@@ -180,6 +185,7 @@ public class StreamSourceContextIdleDetectionTests {
 		SourceFunction.SourceContext<String> context = StreamSourceContexts.getSourceContext(
 			TimeCharacteristic.IngestionTime,
 			processingTimeService,
+			globalAggregateManager,
 			new Object(),
 			mockStreamStatusMaintainer,
 			new CollectorOutput<String>(output),
