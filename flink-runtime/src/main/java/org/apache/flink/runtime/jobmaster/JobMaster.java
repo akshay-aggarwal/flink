@@ -681,7 +681,18 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 		}
 		accumulator = aggregateFunction.add(aggregand, accumulator);
 		accumulators.put(aggregateName, accumulator);
-		return CompletableFuture.completedFuture(aggregateFunction.getResult(accumulator));
+
+		if(aggregateName.startsWith("event-ts-align-")) {
+			Long minOfAllTasks = Long.MAX_VALUE;
+			for(String key: accumulators.keySet()) {
+				if(key.startsWith("event-ts-align-")) {
+					minOfAllTasks = Math.min(minOfAllTasks, (Long) accumulators.get(key));
+				}
+			}
+			return CompletableFuture.completedFuture(minOfAllTasks);
+		} else {
+			return CompletableFuture.completedFuture(aggregateFunction.getResult(accumulator));
+		}
 	}
 
 	//----------------------------------------------------------------------------------------------

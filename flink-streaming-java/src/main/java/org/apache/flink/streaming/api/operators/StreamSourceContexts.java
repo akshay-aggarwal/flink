@@ -292,9 +292,9 @@ public class StreamSourceContexts {
 		private final Output<StreamRecord<T>> output;
 		private final StreamRecord<T> reuse;
 		private final GlobalAggregateManager aggregateManager;
-		private final AggregateFunction<Long, Long, Long> minEventTimeAggregateFn;
+		private final AggregateFunction<Long, Long, Long> maxEventTimeAggregateFn;
 
-		private static final String AGGREGATE_EVENT_TIME_ALIGNMENT_MIN_TS = "event-time-alignment-min-ts";
+		private static final String KEY_AGGREGATE_EVENT_TIME_ALIGNMENT = "event-ts-align-";
 
 		private ManualWatermarkContext(
 				final Output<StreamRecord<T>> output,
@@ -309,7 +309,7 @@ public class StreamSourceContexts {
 			this.output = Preconditions.checkNotNull(output, "The output cannot be null.");
 			this.reuse = new StreamRecord<>(null);
 			this.aggregateManager = aggregateManager;
-			this.minEventTimeAggregateFn = new MinTimestampAggregateFn();
+			this.maxEventTimeAggregateFn = new MaxTimestampAggregateFn();
 		}
 
 		@Override
@@ -333,13 +333,13 @@ public class StreamSourceContexts {
 		}
 
 		@Override
-		public long updateAlignmentTimestamp(long timestamp) throws IOException {
-			return this.aggregateManager.updateGlobalAggregate(AGGREGATE_EVENT_TIME_ALIGNMENT_MIN_TS,
-				timestamp, this.minEventTimeAggregateFn);
+		public long updateAlignmentTimestamp(int subtaskIndex, long taskMinTs) throws IOException {
+			return this.aggregateManager.updateGlobalAggregate(KEY_AGGREGATE_EVENT_TIME_ALIGNMENT + subtaskIndex,
+				taskMinTs, this.maxEventTimeAggregateFn);
 		}
 	}
 
-	private static class MinTimestampAggregateFn implements AggregateFunction<Long, Long, Long> {
+	private static class MaxTimestampAggregateFn implements AggregateFunction<Long, Long, Long> {
 
 		/**
 		 * Long.MAX_VALUE ensures that till we have the initial watermarks
@@ -347,12 +347,12 @@ public class StreamSourceContexts {
 		 */
 		@Override
 		public Long createAccumulator() {
-			return Long.MAX_VALUE;
+			return Long.MIN_VALUE;
 		}
 
 		@Override
 		public Long add(Long value, Long accumulator) {
-			return Math.min(value, accumulator);
+			return Math.max(value, accumulator);
 		}
 
 		@Override

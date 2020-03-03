@@ -21,6 +21,7 @@ package org.apache.flink.streaming.connectors.kafka.internal;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.streaming.connectors.kafka.internals.ClosableBlockingQueue;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaCommitCallback;
@@ -145,9 +146,11 @@ public class KafkaConsumerThread extends Thread {
 		this.kafkaProperties = checkNotNull(kafkaProperties);
 		this.consumerMetricGroup = checkNotNull(consumerMetricGroup);
 		this.subtaskMetricGroup = checkNotNull(subtaskMetricGroup);
+		this.subtaskMetricGroup.gauge("pausedPartitions",
+			(Gauge<Integer>) () -> pausedPartitions == null ? 0 : pausedPartitions.size());
 
 		this.unassignedPartitionsQueue = checkNotNull(unassignedPartitionsQueue);
-		this.eventTimeAlignmentHandover = checkNotNull(eventTimeAlignmentHandover);
+		this.eventTimeAlignmentHandover = eventTimeAlignmentHandover;
 		this.pausedPartitions = null;
 
 		this.pollTimeout = pollTimeout;
@@ -328,9 +331,7 @@ public class KafkaConsumerThread extends Thread {
 				this.consumer.resume(this.pausedPartitions);
 			}
 
-			if (log.isDebugEnabled()) {
-				log.info("Suspending kafka topic partitions for event-time alignment - {}", partitionsToPause);
-			}
+			log.info("Suspending kafka topic partitions for event-time alignment - {}", partitionsToPause);
 
 			// Pause the partitions
 			this.consumer.pause(partitionsToPause);

@@ -264,6 +264,7 @@ public class FlinkKafkaConsumer<T> extends FlinkKafkaConsumerBase<T> {
 			runtimeContext.getMetricGroup(),
 			consumerMetricGroup,
 			useMetrics,
+			getRuntimeContext().getIndexOfThisSubtask(),
 			this.eventTimeAlignmentIntervalMillis,
 			this.eventTimeAlignmentThresholdMillis);
 	}

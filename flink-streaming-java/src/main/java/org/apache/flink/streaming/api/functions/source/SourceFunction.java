@@ -265,10 +265,11 @@ public interface SourceFunction<T> extends Function, Serializable {
 
 		/**
 		 * Update the timestamp for time alignment across tasks.
-		 * @param timestamp Latest timestamp from the source task
+		 *
+		 * @param taskMinTs Latest timestamp from the source task
 		 * @return Min of all timestamps emitted across tasks
 		 */
-		default long updateAlignmentTimestamp(long timestamp) throws IOException {
+		default long updateAlignmentTimestamp(int task, long taskMinTs) throws IOException {
 			throw new UnsupportedOperationException("updateAlignmentTimestamp feature is only " +
 				"enabled for periodic watermarks");
 		}

@@ -99,6 +99,7 @@ public class KafkaFetcher<T> extends AbstractFetcher<T, TopicPartition> {
 		MetricGroup subtaskMetricGroup,
 		MetricGroup consumerMetricGroup,
 		boolean useMetrics,
+		int subtaskIndex,
 		long eventTimeAlignmentIntervalMillis,
 		long eventTimeAlignmentThresholdMillis) throws Exception {
 		super(
@@ -117,10 +118,10 @@ public class KafkaFetcher<T> extends AbstractFetcher<T, TopicPartition> {
 
 		// Initialize event timer aligner
 		// current support is only for PERIODIC WATERMARKS
-		if (watermarksPeriodic != null) {
+		if (watermarksPeriodic != null && eventTimeAlignmentIntervalMillis >= 0) {
 			this.eventTimeAlignmentHandover = new EventTimeAlignmentHandover();
 			this.eventTimeAlignmentThread = initializeEventTimeAligner(
-				eventTimeAlignmentIntervalMillis, eventTimeAlignmentThresholdMillis);
+				eventTimeAlignmentIntervalMillis, eventTimeAlignmentThresholdMillis, subtaskIndex);
 			this.partitionCurrentTimestampMap = new ConcurrentHashMap<>();
 		}
 
@@ -138,7 +139,8 @@ public class KafkaFetcher<T> extends AbstractFetcher<T, TopicPartition> {
 	}
 
 	private Thread initializeEventTimeAligner(long eventTimeAlignmentIntervalMillis,
-			long eventTimeAlignmentThresholdMillis) {
+												long eventTimeAlignmentThresholdMillis,
+												int subtaskIndex) {
 
 		return new Thread(() -> {
 
@@ -148,6 +150,13 @@ public class KafkaFetcher<T> extends AbstractFetcher<T, TopicPartition> {
 			while (running) {
 
 				try {
+					Thread.sleep(eventTimeAlignmentIntervalMillis);
+				} catch (InterruptedException e) {
+					LOG.warn("InterruptedException on event time aligner");
+					break;
+				}
+
+				try {
 					if (!this.partitionCurrentTimestampMap.isEmpty()) {
 
 						// Min of timestamp from all partitions in this task
@@ -155,7 +164,10 @@ public class KafkaFetcher<T> extends AbstractFetcher<T, TopicPartition> {
 								.reduce(Long.MAX_VALUE, (a, b) -> Math.min(a, b));
 
 						// Global minimum for the job, internally uses GlobalAggregateManager
-						Long globalMin = this.sourceContext.updateAlignmentTimestamp(taskMin);
+						Long globalMin = this.sourceContext.updateAlignmentTimestamp(subtaskIndex, taskMin);
+
+						LOG.info("Wake-up Event time alignment taskMin={}, globalMin={}, partitionCurrentTs={}",
+							taskMin, globalMin, this.partitionCurrentTimestampMap);
 
 						// Identify the partitions which are mis-aligned,
 						// ie. have a timestamp > globalMin + threshold
@@ -175,13 +187,6 @@ public class KafkaFetcher<T> extends AbstractFetcher<T, TopicPartition> {
 				} catch (IOException e) {
 					LOG.error("GlobalAggregateManager exception", e);
 				}
-
-				try {
-					Thread.sleep(eventTimeAlignmentIntervalMillis);
-				} catch (InterruptedException e) {
-					LOG.warn("InterruptedException on event time aligner");
-					break;
-				}
 			}
 		});
 	}
@@ -190,7 +195,9 @@ public class KafkaFetcher<T> extends AbstractFetcher<T, TopicPartition> {
 	protected void onEmitWithPeriodicWatermark(
 			KafkaTopicPartitionState<TopicPartition> partitionState, long timestamp) {
 		// Update the map with the latest partition timestamp
-		this.partitionCurrentTimestampMap.put(partitionState.getKafkaPartitionHandle(), timestamp);
+		if (this.partitionCurrentTimestampMap != null) {
+			this.partitionCurrentTimestampMap.put(partitionState.getKafkaPartitionHandle(), timestamp);
+		}
 	}
 
 	// ------------------------------------------------------------------------
