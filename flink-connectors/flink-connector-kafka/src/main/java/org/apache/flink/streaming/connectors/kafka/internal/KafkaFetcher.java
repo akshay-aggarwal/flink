@@ -166,7 +166,7 @@ public class KafkaFetcher<T> extends AbstractFetcher<T, TopicPartition> {
 						// Global minimum for the job, internally uses GlobalAggregateManager
 						Long globalMin = this.sourceContext.updateAlignmentTimestamp(subtaskIndex, taskMin);
 
-						LOG.info("Wake-up Event time alignment taskMin={}, globalMin={}, partitionCurrentTs={}",
+						LOG.debug("Wake-up Event time alignment taskMin={}, globalMin={}, partitionCurrentTs={}",
 							taskMin, globalMin, this.partitionCurrentTimestampMap);
 
 						// Identify the partitions which are mis-aligned,
